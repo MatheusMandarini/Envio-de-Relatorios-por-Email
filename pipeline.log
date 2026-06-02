@@ -1,0 +1,88 @@
+
+════════════════════════════════════════════════════════════
+  PIPELINE — 26/05/2026 08:47:52
+  Python SGF   — C:\Users\ext.matheusmm\Documents\SGF\automacao_projeto\.venv\Scripts\python.exe
+  Python Email — c:\Users\ext.matheusmm\Documents\Envio de Emails\.venv\Scripts\python.exe
+════════════════════════════════════════════════════════════
+[2026-05-26 08:47:52] [INFO   ] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[2026-05-26 08:47:52] [INFO   ] ETAPA 0 — Verificação do arquivo de rede
+[2026-05-26 08:47:52] [INFO   ] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[2026-05-26 08:47:52] [OK     ] Arquivo de rede acessível: \\brtlgwvfs01eld\Florestal\015_Logística Florestal e Infra Estrutura\002 - Logistica Florestal\01. Base de Dados\02. Manuais\09. ChatBot\Report Operacional\Report Operacional.xlsx
+[2026-05-26 08:47:52] [INFO   ] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[2026-05-26 08:47:52] [INFO   ] ETAPA 1 — Extração SGF
+[2026-05-26 08:47:52] [INFO   ] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[2026-05-26 08:47:52] [INFO   ] ▶ Iniciando: Extração SGF  (C:\Users\ext.matheusmm\Documents\SGF\automacao_projeto\src\sgf_pre_email.py)
+[2026-05-26 08:47:52] [INFO   ]   Executável Python: C:\Users\ext.matheusmm\Documents\SGF\automacao_projeto\.venv\Scripts\python.exe
+[2026-05-26 09:41:34] [OK     ] ✔ Extração SGF concluído em 3221.9s (código 0)
+[2026-05-26 09:41:34] [INFO   ] Analisando resultado da extração...
+[2026-05-26 09:41:34] [WARN   ] Extração com falhas — OK: ['365', '415', '165', '459', '160'] | Erro: ['165', '459', '160']
+[2026-05-26 09:41:34] [INFO   ] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[2026-05-26 09:41:34] [INFO   ] ETAPA 2 — Envio de E-mail
+[2026-05-26 09:41:34] [INFO   ] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[2026-05-26 09:41:34] [INFO   ] Banner de aviso injetado no script de e-mail.
+[2026-05-26 09:41:34] [INFO   ] ▶ Iniciando: Envio de E-mail  (C:\Users\ext.matheusmm\Documents\Envio de Emails\relatorios.py)
+[2026-05-26 09:41:34] [INFO   ]   Executável Python: c:\Users\ext.matheusmm\Documents\Envio de Emails\.venv\Scripts\python.exe
+[2026-05-26 09:41:34] [ERRO   ] ✘ Envio de E-mail encerrou com código 1 em 0.4s
+[2026-05-26 09:41:34] [OK     ] Injeção revertida — script de e-mail restaurado.
+[2026-05-26 09:41:34] [INFO   ] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[2026-05-26 09:41:34] [INFO   ] RESUMO DO PIPELINE
+[2026-05-26 09:41:34] [INFO   ] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[2026-05-26 09:41:34] [INFO   ]   Python SGF   : C:\Users\ext.matheusmm\Documents\SGF\automacao_projeto\.venv\Scripts\python.exe
+[2026-05-26 09:41:34] [INFO   ]   Python Email : c:\Users\ext.matheusmm\Documents\Envio de Emails\.venv\Scripts\python.exe
+[2026-05-26 09:41:34] [INFO   ]   Rede OK      : ✔
+[2026-05-26 09:41:34] [INFO   ]   Extração     : ✔ OK (código 0)
+[2026-05-26 09:41:34] [INFO   ]   E-mail       : ✘ ERRO (código 1)
+[2026-05-26 09:41:34] [WARN   ] Pipeline concluído com um ou mais erros. Verifique os logs acima.
+
+════════════════════════════════════════════════════════════
+  PIPELINE — 26/05/2026 11:02:35
+  Python SGF   — C:\Users\ext.matheusmm\Documents\SGF\automacao_projeto\.venv\Scripts\python.exe
+  Python Email — c:\Users\ext.matheusmm\Documents\Envio de Emails\.venv\Scripts\python.exe
+════════════════════════════════════════════════════════════
+[2026-05-26 11:02:35] [INFO   ] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[2026-05-26 11:02:35] [INFO   ] ETAPA 0 — Verificação do arquivo de rede
+[2026-05-26 11:02:35] [INFO   ] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[2026-05-26 11:02:35] [OK     ] Arquivo de rede acessível: \\brtlgwvfs01eld\Florestal\015_Logística Florestal e Infra Estrutura\002 - Logistica Florestal\01. Base de Dados\02. Manuais\09. ChatBot\Report Operacional\Report Operacional V2.xlsx
+[2026-05-26 11:02:35] [INFO   ] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[2026-05-26 11:02:35] [INFO   ] ETAPA 1 — Extração SGF
+[2026-05-26 11:02:35] [INFO   ] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[2026-05-26 11:02:35] [INFO   ] ▶ Iniciando: Extração SGF  (C:\Users\ext.matheusmm\Documents\SGF\automacao_projeto\src\sgf_pre_email.py)
+[2026-05-26 11:02:35] [INFO   ]   Executável Python: C:\Users\ext.matheusmm\Documents\SGF\automacao_projeto\.venv\Scripts\python.exe
+[2026-05-26 11:03:08] [OK     ] ✔ Extração SGF concluído em 33.1s (código 0)
+[2026-05-26 11:03:08] [INFO   ] Analisando resultado da extração...
+[2026-05-26 11:03:08] [OK     ] Extração OK — IDs processados: []
+[2026-05-26 11:03:08] [INFO   ] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[2026-05-26 11:03:08] [INFO   ] ETAPA 2 — Envio de E-mail
+[2026-05-26 11:03:08] [INFO   ] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[2026-05-26 11:03:08] [INFO   ] ▶ Iniciando: Envio de E-mail  (C:\Users\ext.matheusmm\Documents\Envio de Emails\relatorios.py)
+[2026-05-26 11:03:08] [INFO   ]   Executável Python: c:\Users\ext.matheusmm\Documents\Envio de Emails\.venv\Scripts\python.exe
+
+════════════════════════════════════════════════════════════
+  PIPELINE — 26/05/2026 11:04:18
+  Python SGF   — C:\Users\ext.matheusmm\Documents\SGF\automacao_projeto\.venv\Scripts\python.exe
+  Python Email — c:\Users\ext.matheusmm\Documents\Envio de Emails\.venv\Scripts\python.exe
+════════════════════════════════════════════════════════════
+[2026-05-26 11:04:18] [INFO   ] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[2026-05-26 11:04:18] [INFO   ] ETAPA 0 — Verificação do arquivo de rede
+[2026-05-26 11:04:18] [INFO   ] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[2026-05-26 11:04:18] [OK     ] Arquivo de rede acessível: \\brtlgwvfs01eld\Florestal\015_Logística Florestal e Infra Estrutura\002 - Logistica Florestal\01. Base de Dados\02. Manuais\09. ChatBot\Report Operacional\Report Operacional V2.xlsx
+[2026-05-26 11:04:18] [INFO   ] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[2026-05-26 11:04:18] [INFO   ] ETAPA 1 — Extração SGF
+[2026-05-26 11:04:18] [INFO   ] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[2026-05-26 11:04:18] [INFO   ] ▶ Iniciando: Extração SGF  (C:\Users\ext.matheusmm\Documents\SGF\automacao_projeto\src\sgf_pre_email.py)
+[2026-05-26 11:04:18] [INFO   ]   Executável Python: C:\Users\ext.matheusmm\Documents\SGF\automacao_projeto\.venv\Scripts\python.exe
+
+════════════════════════════════════════════════════════════
+  PIPELINE — 27/05/2026 07:58:09
+  Python SGF   — C:\Users\ext.matheusmm\Documents\SGF\automacao_projeto\.venv\Scripts\python.exe
+  Python Email — c:\Users\ext.matheusmm\Documents\Envio de Emails\.venv\Scripts\python.exe
+════════════════════════════════════════════════════════════
+[2026-05-27 07:58:09] [INFO   ] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[2026-05-27 07:58:09] [INFO   ] ETAPA 0 — Verificação do arquivo de rede
+[2026-05-27 07:58:09] [INFO   ] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[2026-05-27 07:58:09] [OK     ] Arquivo de rede acessível: \\brtlgwvfs01eld\Florestal\015_Logística Florestal e Infra Estrutura\002 - Logistica Florestal\01. Base de Dados\02. Manuais\09. ChatBot\Report Operacional\Report Operacional V2.xlsx
+[2026-05-27 07:58:09] [INFO   ] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[2026-05-27 07:58:09] [INFO   ] ETAPA 1 — Extração SGF
+[2026-05-27 07:58:09] [INFO   ] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[2026-05-27 07:58:09] [INFO   ] ▶ Iniciando: Extração SGF  (C:\Users\ext.matheusmm\Documents\SGF\automacao_projeto\src\sgf_pre_email.py)
+[2026-05-27 07:58:09] [INFO   ]   Executável Python: C:\Users\ext.matheusmm\Documents\SGF\automacao_projeto\.venv\Scripts\python.exe

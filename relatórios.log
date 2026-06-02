@@ -1,0 +1,35 @@
+============================================================
+  SISTEMA DE ENVIO AUTOMÁTICO — REPORT OPERACIONAL ELDORADO
+  Início: 26/05/2026 11:14:35
+============================================================
+[LOG] Verificando existência do arquivo: \\brtlgwvfs01eld\Florestal\015_Logística Florestal e Infra Estrutura\002 - Logistica Florestal\01. Base de Dados\02. Manuais\09. ChatBot\Report Operacional\Report Operacional V2.xlsx
+[LOG] Abrindo planilha...
+[LOG] Lendo aba: 'Volume Real Diário'...
+C:\Users\ext.matheusmm\Documents\Envio de Emails\.venv\Lib\site-packages\openpyxl\worksheet\_reader.py:329: UserWarning: Slicer List extension is not supported and will be removed
+  warn(msg)
+[LOG]   Aba carregada: 168 linhas × 27 colunas
+[LOG]   Blocos detectados: ['Vol. movimentado', 'DMT Total', 'Média Cx Carga', 'Média de Rpv']
+[LOG]   Bloco 'Vol. movimentado': 14 linhas × 26 colunas
+[LOG]   Bloco 'DMT Total': 14 linhas × 26 colunas
+[LOG]   Bloco 'Média Cx Carga': 14 linhas × 28 colunas
+[LOG]   Bloco 'Média de Rpv': 60 linhas × 28 colunas
+[LOG]   4 sub-tabela(s) extraída(s) de 'Volume Real Diário'
+[LOG] Total de sub-tabelas: 4
+[LOG] Gerando imagem: 'Volume Real Diário — Vol. movimentado'...
+[LOG]   Imagem salva: report_temp_01_Volume_Real_Diário___Vol__movimentado.png
+[LOG] Gerando imagem: 'Volume Real Diário — DMT Total'...
+[LOG]   Imagem salva: report_temp_02_Volume_Real_Diário___DMT_Total.png
+[LOG] Gerando imagem: 'Volume Real Diário — Média Cx Carga'...
+[LOG]   Imagem salva: report_temp_03_Volume_Real_Diário___Média_Cx_Carga.png
+[LOG] Gerando imagem: 'Volume Real Diário — Média de Rpv'...
+[LOG]   Imagem salva: report_temp_04_Volume_Real_Diário___Média_de_Rpv.png
+[LOG] E-mail montado com sucesso.
+[LOG] Criando e-mail no Outlook...
+[LOG] E-mail enviado para: gustavo.carmo@eldoradobrasil.com.br, alana.oliveira@eldoradobrasil.com.br, rogerio.araujo@eldoradobrasil.com.br, giovani.barbosa@eldoradobrasil.com.br, janaine.costa@eldoradobrasil.com.br
+[LOG] Temporário removido: report_temp_01_Volume_Real_Diário___Vol__movimentado.png
+[LOG] Temporário removido: report_temp_02_Volume_Real_Diário___DMT_Total.png
+[LOG] Temporário removido: report_temp_03_Volume_Real_Diário___Média_Cx_Carga.png
+[LOG] Temporário removido: report_temp_04_Volume_Real_Diário___Média_de_Rpv.png
+
+[LOG] Duração total: 88.4s
+============================================================

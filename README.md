@@ -4,7 +4,7 @@ Este repositório contém um script Python para extrair tabelas de uma planilha 
 
 ## O que o projeto faz
 
-- Lê a planilha `data/Indicadores Produção.xlsx`
+- Lê a planilha 
 - Identifica blocos de indicadores e sub-tabelas
 - Gera imagens PNG separadas para cada tabela
 - Monta um e-mail HTML com as imagens embutidas
