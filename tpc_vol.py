@@ -83,28 +83,24 @@ from PIL import Image
 # ===========================================================================
 
 # Caminho padrão — altere no .env como EXCEL_PATH=\\servidor\pasta\arquivo.xlsx
-EXCEL_PATH = os.getenv(
-    "EXCEL_PATH",
-    r"\\brtlgwvfs01eld\Florestal\015_Logística Florestal e Infra Estrutura"
-    r"\002 - Logistica Florestal\01. Base de Dados\02. Manuais\09. ChatBot"
-    r"\03. Planilha de envio\Relatório de Produção - Logística Florestal.xlsx"
-)
+EXCEL_PATH = os.getenv("TPC_EXCEL_PATH", r"C:\Users\ext.matheusmm\Desktop\Relatório Estoque 28_05_2026.xlsx")
+DESTINATARIOS = [e.strip() for e in os.getenv("TPC_DESTINATARIOS", "").split(",") if e.strip()]
+ANEXAR_PLANILHA = os.getenv("TPC_ANEXAR_PLANILHA", "true").lower() == "true"
 
 EMAIL_REMETENTE  = os.getenv("EMAIL_REMETENTE", "")
 ASSINATURA_NOME  = os.getenv("ASSINATURA_NOME", "")
 ASSINATURA_CARGO = os.getenv("ASSINATURA_CARGO", "")
 ASSINATURA_TEL   = os.getenv("ASSINATURA_TEL", "")
 ASSINATURA_EMAIL = EMAIL_REMETENTE
-ANEXAR_PLANILHA  = os.getenv("ANEXAR_PLANILHA", "true").lower() == "true"
-ANEXAR_GRAFICOS  = os.getenv("ANEXAR_GRAFICOS", "true").lower() == "true"
+
 
 _dest_raw    = os.getenv("DESTINATARIOS", "")
-DESTINATARIOS = [e.strip() for e in _dest_raw.split(",") if e.strip()]
 
-ASSUNTO     = "Relatório de Produção - Logística Florestal"
+
+
 SAUDACAO    = "Prezados,"
 TEXTO_CORPO = (
-    "Segue em anexo o <strong>Relatório de Produção</strong> da Eldorado Brasil, "
+    "Segue em anexo o <strong>Estoque Diário de Madeira/TPC</strong> da Eldorado Brasil, "
     "com os dados consolidados do período."
 )
 
@@ -112,12 +108,13 @@ IMAGE_BASE = "report_temp"
 
 SHEET_CONFIG: list[dict] = [
     {
-        "sheet":    "Tabela - Produção Diária",
-        "titulo":   "Produção Diária",
-        "extrator": "extrator_subtabelas_por_bloques",
+        "sheet":    "Resumo",
+        "titulo":   "Resumo de Estoque",
+        "extrator": "extrator_resumo_estoque",
         "ativo":    True,
-    },
+   },
 ]
+
 
 
 # ===========================================================================
@@ -159,152 +156,6 @@ def _limpar_df(df: pd.DataFrame) -> pd.DataFrame:
 
 def _formatar_df(df: pd.DataFrame) -> pd.DataFrame:
     return df.apply(lambda col: col.map(_fmt_num))
-
-
-def _is_blank(v) -> bool:
-    if v is None:
-        return True
-    if isinstance(v, str) and v.strip() == "":
-        return True
-    return _is_nan(v)
-
-
-def _split_header_segments(values: list, max_gap: int = 3) -> list[tuple[int, int]]:
-    segments = []
-    start = None
-    gap = 0
-
-    for idx, value in enumerate(values):
-        blank = _is_blank(value)
-        if not blank:
-            if start is None:
-                start = idx
-            gap = 0
-        elif start is not None:
-            gap += 1
-            if gap > max_gap:
-                end = idx - gap
-                if end >= start:
-                    segments.append((start, end))
-                start = None
-                gap = 0
-
-    if start is not None:
-        segments.append((start, len(values) - 1))
-
-    return segments
-
-
-def _extract_segment_title(df: pd.DataFrame, header_row: int, start_col: int, end_col: int) -> str:
-    for row_idx in range(header_row - 1, max(header_row - 4, -1), -1):
-        linha = df.iloc[row_idx, start_col:end_col + 1].tolist()
-        textos = [str(v).strip() for v in linha if not _is_blank(v)]
-        if textos:
-            for keyword in (
-                "Logística de Celulose",
-                "Logistica de Celulose",
-                "Logística de Biomassa",
-                "Logistica de Biomassa",
-                "Report Operacional - Celulose",
-                "Report Operacional - Biomassa",
-            ):
-                for texto in textos:
-                    if keyword.lower() in texto.lower():
-                        return texto
-            for texto in reversed(textos):
-                if any(k in texto for k in ("Celulose", "Biomassa")):
-                    return texto
-            return textos[-1]
-    return ""
-
-
-def _find_segment_end(df: pd.DataFrame, header_row: int, start_col: int, end_col: int) -> int:
-    row_end = header_row + 1
-    while row_end < len(df):
-        linha = df.iloc[row_end, start_col:end_col + 1].tolist()
-        if all(_is_blank(v) for v in linha):
-            break
-        if any(str(v).strip() == "Fazenda" for v in linha if not _is_blank(v)):
-            break
-        row_end += 1
-    return row_end
-
-
-def _exportar_graficos(path: str, sheet_name: str, base_name: str = "chart") -> list[tuple[str, str]]:
-    imagens = []
-    try:
-        import xlwings as xw
-    except ImportError:
-        print("[AVISO] Biblioteca 'xlwings' não instalada. Ignorando exportação de gráficos.")
-        return imagens
-
-    try:
-        app = xw.App(visible=False, add_book=False)
-        wb = app.books.open(str(path))
-        sht = wb.sheets[sheet_name]
-        
-        try:
-            for slicer in sht.api.Slicers:
-                slicer.SlicerItems.ClearAll()
-        except Exception:
-            pass
-        
-        count = sht.api.ChartObjects().Count
-        if count <= 0:
-            return imagens
-
-        print(f"[LOG] Exportando {count} gráfico(s) de '{sheet_name}'...")
-        for idx in range(1, count + 1):
-            chart_obj = sht.api.ChartObjects(idx)
-            nome = f"{base_name}_{sheet_name}_{idx:02d}.png"
-            nome = "".join(c if c.isalnum() or c in "-_." else "_" for c in nome)
-            caminho_absoluto = os.path.abspath(nome)
-            exportou = chart_obj.Chart.Export(str(caminho_absoluto), "PNG")
-            if exportou and os.path.exists(caminho_absoluto):
-                titulo = (
-                    "Grafico de Celulose: Report Operacional - Celulose"
-                    if chart_obj.Left < 700
-                    else "Grafico de Biomassa: Report Operacional - Biomassa"
-                )
-                imagens.append((titulo, caminho_absoluto))
-                print(f"[LOG]   Gráfico exportado: {caminho_absoluto} ({titulo})")
-            else:
-                print(f"[AVISO] Não exportou gráfico {idx} de '{sheet_name}'.")
-
-    except Exception as exc:
-        print(f"[AVISO] Falha ao exportar gráficos de '{sheet_name}': {exc}")
-    finally:
-        try:
-            if wb is not None:
-                wb.close(save_changes=False)
-        except Exception:
-            pass
-        try:
-            if app is not None:
-                app.quit()
-        except Exception:
-            pass
-
-    return imagens
-
-
-def _extrair_data_coleta(path: str, sheet_name: str) -> str:
-    """Extrai a data de coleta da planilha."""
-    try:
-        df = pd.read_excel(path, sheet_name=sheet_name, header=None)
-        for idx, row in df.iterrows():
-            for val in row:
-                if pd.notna(val):
-                    val_str = str(val).strip()
-                    try:
-                        dt = pd.to_datetime(val_str, dayfirst=True)
-                        if pd.Timestamp.now().year - 2 <= dt.year <= pd.Timestamp.now().year + 1:
-                            return dt.strftime("%d/%m/%Y")
-                    except (ValueError, TypeError):
-                        pass
-    except Exception as exc:
-        print(f"[AVISO] Falha ao extrair data: {exc}")
-    return ""
 
 
 def _refresh_excel(path: str | Path, timeout_s: int | None = None) -> bool:
@@ -391,276 +242,184 @@ def _refresh_excel(path: str | Path, timeout_s: int | None = None) -> bool:
 # EXTRATORES
 # ===========================================================================
 
-def extrator_producao_celulose_biomassa(df: pd.DataFrame, titulo_aba: str = "") -> list[tuple[str, pd.DataFrame]]:
-    """
-    Extrator legado para planilhas de Celulose e Biomassa em formato antigo.
-    Detecta cabeçalho em linha 2 (F_Cubo415[...]) e extrai dados agregados.
-    """
-    resultados = []
-    
-    # Procurar pela linha de cabeçalho
-    header_row = None
-    for i in range(min(5, len(df))):
-        vals = [str(v).strip() for v in df.iloc[i].tolist()]
-        if any("F_Cubo415" in v for v in vals):
-            header_row = i
-            break
-    
-    if header_row is None:
-        print(f"[AVISO] Cabeçalho F_Cubo415 não encontrado em '{titulo_aba}'.")
-        return resultados
-    
-    # Usar a linha de cabeçalho
-    cabecalhos_raw = [str(v).strip() for v in df.iloc[header_row].tolist()]
-    
-    # Extrair dados (começar depois do cabeçalho)
-    dados = df.iloc[header_row + 1:].copy()
-    dados.columns = range(len(dados.columns))
-    
-    # Colunas-alvo: Nome da Origem, Fazenda/Projeto, Produto, Volume, DMT
-    cols_alvo = {
-        "Nome da Origem": None,
-        "Fazenda/Projeto": None,
-        "Dcr Produto": None,
-        "Vol": None,
-        "DMT x Vol": None,
-        "RPV x Vol": None,
-    }
-    
-    # Localizar índices das colunas-alvo
-    for idx, cab in enumerate(cabecalhos_raw):
-        for col_alvo in cols_alvo:
-            if col_alvo in cab:
-                cols_alvo[col_alvo] = idx
-                break
-    
-    # Selecionar apenas colunas encontradas
-    indices = [i for i in cols_alvo.values() if i is not None]
-    nomes = [k for k, i in cols_alvo.items() if i is not None]
-    
-    if not indices:
-        print(f"[AVISO] Nenhuma coluna-alvo encontrada em '{titulo_aba}'.")
-        return resultados
-    
-    sub = dados.iloc[:, indices].copy()
-    sub.columns = nomes
-    sub = _limpar_df(sub)
-    
-    # Remover linhas vazias/inválidas
-    if not sub.empty:
-        sub = sub[sub.apply(lambda row: not all(pd.isna(v) or str(v).strip() in ("", "nan") for v in row), axis=1)]
-    
-    if not sub.empty:
-        sub = _formatar_df(sub)
-        titulo_final = titulo_aba or "Produção"
-        resultados.append((titulo_final, sub))
-    
-    return resultados
-
-
-def extrator_subtabelas_por_bloques(df: pd.DataFrame, titulo_aba: str = "") -> list[tuple[str, pd.DataFrame]]:
-    """
-    Extrai múltiplas subtabelas de uma mesma aba de Excel.
-    Detecta cabeçalhos repetidos na planilha e segmenta blocos horizontais
-    para gerar tabelas independentes.
-    """
-    resultados = []
-    header_rows = []
-
-    for i in range(len(df)):
-        valores = [str(v).strip() for v in df.iloc[i].tolist()]
-        if "Fazenda" in valores and any("Meta" in v or "Vol." in v or "DMT" in v or "RPV" in v for v in valores if v):
-            header_rows.append(i)
-
-    if not header_rows:
-        print(f"[AVISO] Nenhum cabeçalho de subtabela encontrado em '{titulo_aba}'.")
-        return resultados
-
-    for header_row in header_rows:
-        segmentos = _split_header_segments(df.iloc[header_row].tolist(), max_gap=3)
-        for start_col, end_col in segmentos:
-            cabecalhos = [ _str_val(v) for v in df.iloc[header_row, start_col:end_col + 1].tolist() ]
-            if not any(c for c in cabecalhos if c):
-                continue
-            if not any("Fazenda" in c or "Meta" in c or "Vol" in c or "DMT" in c or "RPV" in c for c in cabecalhos if c):
-                continue
-
-            row_end = _find_segment_end(df, header_row, start_col, end_col)
-            sub = df.iloc[header_row + 1:row_end, start_col:end_col + 1].copy()
-            sub.columns = cabecalhos
-            sub = _limpar_df(sub)
-
-            if sub.empty:
-                continue
-
-            # Excluir linhas que sejam totalmente vazias ou somente com identificadores inválidos
-            mask = sub.apply(lambda row: not all(
-                _is_blank(v) or str(v).strip().lower() in ("", "nan")
-                for v in row
-            ), axis=1)
-            sub = sub[mask].reset_index(drop=True)
-
-            if sub.empty:
-                continue
-
-            sub = _formatar_df(sub)
-            titulo_extra = _extract_segment_title(df, header_row, start_col, end_col)
-            titulo_final = titulo_extra or f"{titulo_aba} — Subtabela {len(resultados)+1}"
-            resultados.append((titulo_final, sub))
-
-    return resultados
-
-
 def extrator_volume_real_diario(df: pd.DataFrame) -> list[tuple[str, pd.DataFrame]]:
     """
-    Extrator específico para a aba 'Volume Real Diário'.
-    Detecta blocos onde:
-      - col[1] = nome do bloco
-      - col[2] = 'Rótulos de Coluna'
+    Detecta blocos onde a linha seguinte ao título contém datas ou 'Rótulos de Coluna'.
+    Extrai cada bloco como uma sub-tabela.
     """
-
     resultados = []
     n_rows = len(df)
     blocos = []
 
-    # Detectar blocos
     for i in range(n_rows - 1):
-        v1 = str(df.iloc[i, 1]).strip() if df.shape[1] > 1 else ""
-        v2 = str(df.iloc[i, 2]).strip() if df.shape[1] > 2 else ""
+        v1 = _str_val(df.iloc[i, 1]) if df.shape[1] > 1 else ""
+        v2 = df.iloc[i + 1, 2]       if df.shape[1] > 2 else ""
 
-        if v1 and v1 not in ("nan", " ") and "Rótulos" in v2:
+        if not v1:
+            continue
+
+        if hasattr(v2, "strftime") or "Rótulos" in _str_val(v2):
             blocos.append((i, v1))
 
     if not blocos:
         print("[AVISO] Nenhum bloco detectado na aba 'Volume Real Diário'.")
         return resultados
 
-    print(f"[LOG]   Blocos detectados: {[n for _, n in blocos]}")
+    print(f"[LOG]   Blocos detectados: {[nome for _, nome in blocos]}")
 
     for b_idx, (linha_titulo, nome) in enumerate(blocos):
-
-        linha_fim = (
-            blocos[b_idx + 1][0]
-            if b_idx + 1 < len(blocos)
-            else n_rows
-        )
-
+        linha_fim = blocos[b_idx + 1][0] if b_idx + 1 < len(blocos) else n_rows
         linha_cab = linha_titulo + 1
 
-        # Cabeçalhos
+        # Montar cabeçalhos da linha de datas
         cab_row = df.iloc[linha_cab].tolist()
-
-        cabecalhos = ["Fazenda/Categoria"]
-
-        for v in cab_row[2:]:
+        cabecalhos = []
+        for v in cab_row:
             if hasattr(v, "strftime"):
                 cabecalhos.append(v.strftime("%d/%m"))
-
-            elif not _is_nan(v) and str(v).strip() not in ("", "nan"):
+            elif not _is_nan(v) and str(v).strip() and str(v).strip() != " ":
                 cabecalhos.append(str(v).strip())
-
             else:
-                cabecalhos.append(None)
+                cabecalhos.append("")   # espaço em branco → coluna vazia
 
-        # Pular linha do ano (2026)
-        inicio_dados = linha_cab + 2
-
-        dados_raw = (
-            df.iloc[inicio_dados:linha_fim]
-            .copy()
-            .reset_index(drop=True)
-        )
-
-        if dados_raw.empty:
+        dados = df.iloc[linha_cab + 1 : linha_fim].copy().reset_index(drop=True)
+        if dados.empty:
             continue
 
-        nomes_col = dados_raw.iloc[:, 1].tolist()
-        valores = dados_raw.iloc[:, 2:].values.tolist()
+        # Descartar col[0] se inteiramente NaN
+        if dados.iloc[:, 0].isna().all():
+            dados      = dados.iloc[:, 1:].copy().reset_index(drop=True)
+            cabecalhos = cabecalhos[1:]
 
-        linhas_ok = []
+        # Alinhar colunas
+        n_cab = len(cabecalhos)
+        n_col = len(dados.columns)
+        if n_col < n_cab:
+            cabecalhos = cabecalhos[:n_col]
+        elif n_col > n_cab:
+            cabecalhos += [f"Col_{k}" for k in range(n_cab, n_col)]
 
-        for nm, vrow in zip(nomes_col, valores):
+        dados.columns = cabecalhos
 
-            s = str(nm).strip()
+        # Renomear primeira coluna se vazia
+        first = dados.columns[0]
+        if first in ("", " ") or first.startswith("Col_"):
+            dados = dados.rename(columns={first: "Fazenda/Categoria"})
 
-            if _is_nan(nm) or s in ("", "nan"):
-                continue
+        # Remover colunas cujo cabeçalho é vazio (ex: coluna de espaço " ")
+        cols_validas = [c for c in dados.columns if c.strip() not in ("", " ") or c == "Fazenda/Categoria"]
+        dados = dados[cols_validas].copy()
 
+        # Filtrar linhas: descartar NaN, linha de ano (ex: "2026")
+        def _eh_util(v):
+            s = str(v).strip()
+            if _is_nan(v) or s in ("", "nan"):
+                return False
             if s.isdigit() and len(s) == 4:
-                continue
+                return False
+            return True
 
-            linhas_ok.append((s, vrow))
+        mask_util = dados.iloc[:, 0].apply(_eh_util)
+        dados = dados[mask_util.values].copy()
 
-        if not linhas_ok:
+        if dados.empty:
             continue
 
-        idx_validos = [
-            i
-            for i, c in enumerate(cabecalhos[1:])
-            if c is not None
+        # Manter somente linhas com ao menos um valor numérico (exceto col[0])
+        def _tem_numero(row):
+            return any(
+                isinstance(v, (int, float)) and not _is_nan(v)
+                for v in row.tolist()[1:]
+            )
+
+        dados = dados[dados.apply(_tem_numero, axis=1)].copy().reset_index(drop=True)
+
+        if dados.empty:
+            continue
+
+        # Selecionar colunas de data (excluir "Col_*" sem nome útil)
+        id_cols   = [dados.columns[0]]
+        date_cols = [
+            c for c in dados.columns[1:]
+            if c.strip() and not c.startswith("Col_") and c != "Fazenda/Categoria"
         ]
+        sub = dados[id_cols + date_cols].copy()
+        sub = _formatar_df(sub)
+        sub = sub.replace("nan", "—")
 
-        cols_finais = (
-            ["Fazenda/Categoria"]
-            + [cabecalhos[1:][i] for i in idx_validos]
-        )
-
-        rows_finais = []
-
-        for nm, vrow in linhas_ok:
-
-            vals_selecionados = [
-                vrow[i] if i < len(vrow) else np.nan
-                for i in idx_validos
-            ]
-
-            tem_num = any(
-                isinstance(v, (int, float))
-                and not _is_nan(v)
-                for v in vals_selecionados
-            )
-
-            if not tem_num:
-                continue
-
-            row_fmt = [nm] + [
-                _fmt_num(v)
-                for v in vals_selecionados
-            ]
-
-            rows_finais.append(row_fmt)
-
-        
-        if not rows_finais:
-            continue
-
-        sub = pd.DataFrame(
-            rows_finais,
-            columns=cols_finais
-        )
-
-        # Mantém Fazenda/Categoria + até os últimos 7 dias
-        if len(sub.columns) > 1:
-            qtd_dias = min(7, len(sub.columns) - 1)
-
-            colunas = [sub.columns[0]] + list(sub.columns[-qtd_dias:])
-            sub = sub[colunas]
-
-        print(
-            f"[LOG]   Bloco '{nome}': "
-            f"{sub.shape[0]} linhas × "
-            f"{sub.shape[1]} colunas"
-        )
-
-        resultados.append(
-            (
-                f"Volume Real Diário — {nome}",
-                sub
-            )
-        )
+        print(f"[LOG]   Bloco '{nome}': {len(sub)} linhas × {len(sub.columns)} colunas")
+        resultados.append((f"Volume Real Diário — {nome}", sub))
 
     return resultados
 
+def extrator_resumo_estoque(df: pd.DataFrame) -> list[tuple[str, pd.DataFrame]]:
+    """
+    Extrai os dois blocos da aba Resumo:
+    Bloco 1 (cols H–N): Estoque Total por Classe TPC
+    Bloco 2 (cols P–X): Estoque Total por Densidade
+    Cabeçalho na linha 8 (índice 8), dados nas linhas 9–20.
+    """
+    resultados = []
+    # Localiza a linha de cabeçalho pela presença de "Fazendas"
+    header_row = None
+    for i in range(len(df)):
+        vals = [_str_val(v) for v in df.iloc[i].tolist()]
+        if "Fazendas" in vals:
+            header_row = i
+            break
+
+    if header_row is None:
+        print("[AVISO] Cabeçalho não encontrado na aba 'Resumo'.")
+        return resultados
+
+    cab = df.iloc[header_row].tolist()
+    dados = df.iloc[header_row + 1:].copy().reset_index(drop=True)
+
+    # Detecta onde cada bloco começa (células com "Fazendas" no cabeçalho)
+    blocos_ini = [i for i, v in enumerate(cab) if _str_val(v) == "Fazendas"]
+
+    titulos_bloco = []
+    for bi in blocos_ini:
+        # Título real está 1 linha acima do cabeçalho (linha "Estoque Total / Classe TPC")
+        t1 = _str_val(df.iloc[header_row - 1, bi]) if header_row >= 1 else ""
+        t2 = _str_val(df.iloc[header_row - 1, bi + 1]) if header_row >= 1 else ""
+        titulo = f"{t1} — {t2}".strip(" —") if t2 else t1
+        titulos_bloco.append(titulo or f"Bloco col {bi}")
+
+    for idx, bi in enumerate(blocos_ini):
+        # Fim do bloco = início do próximo ou fim do df
+        bf = blocos_ini[idx + 1] - 1 if idx + 1 < len(blocos_ini) else len(cab)
+        cols_idx = list(range(bi, bf))
+
+        cabecalhos = [_str_val(cab[i]) or f"Col_{i}" for i in cols_idx]
+        sub = dados.iloc[:, cols_idx].copy()
+        sub.columns = cabecalhos
+
+        # Filtra linhas com valor na col "Fazendas" e exclui "Total Geral"
+        mask = sub["Fazendas"].apply(
+            lambda v: not _is_nan(v)
+                    and str(v).strip() not in ("", "nan", "Total Geral")
+        )
+        sub = sub[mask.values].copy().reset_index(drop=True)
+
+        # Adiciona linha de Total Geral ao final
+        total_mask = dados.iloc[:, bi].apply(
+            lambda v: _str_val(v) == "Total Geral"
+        )
+        if total_mask.any():
+            total_row = dados[total_mask].iloc[[0], cols_idx].copy()
+            total_row.columns = cabecalhos
+            sub = pd.concat([sub, total_row], ignore_index=True)
+
+        if sub.empty:
+            continue
+
+        sub = _formatar_df(sub)
+        sub = sub.replace("nan", "—")
+        print(f"[LOG]   Bloco '{titulos_bloco[idx]}': {len(sub)} linhas × {len(sub.columns)} colunas")
+        resultados.append((f"Resumo — {titulos_bloco[idx]}", sub))
+
+    return resultados
 
 def extrator_meta_diaria_bi(df: pd.DataFrame) -> list[tuple[str, pd.DataFrame]]:
     resultados = []
@@ -787,12 +546,10 @@ def extrator_micro_logistica(df: pd.DataFrame) -> list[tuple[str, pd.DataFrame]]
 
 
 EXTRATORES = {
-    "extrator_producao_celulose_biomassa": extrator_producao_celulose_biomassa,
-    "extrator_subtabelas_por_bloques":     extrator_subtabelas_por_bloques,
-    "extrator_meta_diaria_bi":             extrator_meta_diaria_bi,
-    "extrator_volume_real_diario":         extrator_volume_real_diario,
-    "extrator_forecast_volume":            extrator_forecast_volume,
-    "extrator_micro_logistica":            extrator_micro_logistica,
+    "extrator_meta_diaria_bi":      extrator_meta_diaria_bi,
+    "extrator_volume_real_diario":  extrator_volume_real_diario,
+    "extrator_forecast_volume":     extrator_forecast_volume,
+    "extrator_micro_logistica":     extrator_micro_logistica,
 }
 
 
@@ -832,10 +589,7 @@ def carregar_e_segmentar(path: str, config: list[dict]) -> list[tuple[str, pd.Da
             continue
 
         print(f"[LOG]   Aba carregada: {df.shape[0]} linhas × {df.shape[1]} colunas")
-        try:
-            subtabelas = fn_extrator(df, cfg.get("titulo", sheet))
-        except TypeError:
-            subtabelas = fn_extrator(df)
+        subtabelas = fn_extrator(df)
         print(f"[LOG]   {len(subtabelas)} sub-tabela(s) extraída(s) de '{sheet}'")
         todas.extend(subtabelas)
 
@@ -848,10 +602,6 @@ def carregar_e_segmentar(path: str, config: list[dict]) -> list[tuple[str, pd.Da
 # ===========================================================================
 
 def gerar_imagem(df: pd.DataFrame, titulo: str, caminho: str) -> None:
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
     print(f"[LOG] Gerando imagem: '{titulo}'...")
     df = df.reset_index(drop=True)
 
@@ -868,76 +618,66 @@ def gerar_imagem(df: pd.DataFrame, titulo: str, caminho: str) -> None:
                 novas.append(c)
         df.columns = novas
 
-    COR_HEADER = "#1e5f3b"
-    COR_STRIPE = "#e8f5ee"
-    COR_BRANCO = "#ffffff"
-    COR_BORDER = "#a8d5b5"
+    COR_HEADER  = "#1e5f3b"
+    COR_STRIPE  = "#e8f5ee"
+    COR_BORDER  = "#a8d5b5"
 
-    n_rows, n_cols = df.shape
-    col_labels = list(df.columns)
-    cell_data  = df.values.tolist()
-
-    # --- Calcular largura de cada coluna pelo conteúdo ---
-    CHAR_W   = 0.10   # caracteres mais compactos
-    MIN_W    = 0.45   # mínimo (colunas de data tipo "01/05" ficam ~0.7")
-    MAX_W    = 4.0    # teto maior para não comprimir colunas
-    PAD      = 0.20   # padding lateral
-
-    col_widths = []
-    for ci in range(n_cols):
-        header_len = len(str(col_labels[ci]))
-        data_len   = max((len(str(row[ci])) for row in cell_data), default=0)
-        best       = max(header_len, data_len)
-        w          = min(MAX_W, max(MIN_W, best * CHAR_W + PAD))
-        col_widths.append(w)
-
-    fig_w  = sum(col_widths) + 0.5          # margem lateral maior
-    ROW_H  = 0.40   # altura para melhor legibilidade
-    fig_h  = (n_rows + 2) * ROW_H + 0.6    # +2 = header + título
-
-    fig, ax = plt.subplots(figsize=(fig_w, fig_h))
-    fig.patch.set_facecolor(COR_BRANCO)     # ← fundo BRANCO (sem transparência)
-    ax.set_facecolor(COR_BRANCO)
-    ax.axis("off")
-
-    tbl = ax.table(
-        cellText=cell_data,
-        colLabels=col_labels,
-        cellLoc="center",
-        loc="center",
-        colWidths=[w / fig_w for w in col_widths],  # frações da figura
+    estilo = (
+        df.style
+        .set_caption(titulo)
+        .set_properties(**{
+            "font-family": "Calibri, Arial, sans-serif",
+            "font-size":   "13px",       # era 11px
+            "text-align":  "center",
+            "border":      f"1px solid {COR_BORDER}",
+            "padding":     "7px 10px",   # era 5px 8px
+            "white-space": "nowrap",
+        })
+        .set_table_styles([
+            {
+                "selector": "caption",
+                "props": [
+                    ("font-size", "12px"), ("font-weight", "bold"),
+                    ("color", COR_HEADER), ("text-align", "left"),
+                    ("padding-bottom", "4px"),
+                    ("font-family", "Calibri, Arial, sans-serif"),
+                ],
+            },
+            {
+                "selector": "th",
+                "props": [
+                    ("background-color", COR_HEADER), ("color", "white"),
+                    ("font-weight", "bold"), ("font-size", "13px"),
+                    ("text-align", "center"), ("padding", "8px 10px"),
+                    ("border", f"1px solid {COR_HEADER}"),
+                ],
+            },
+            {
+                "selector": "table",
+                "props": [("border-collapse", "collapse"), ("width", "100%")],
+            },
+        ])
+        .apply(
+            lambda row: [
+                f"background-color: {COR_STRIPE}" if row.name % 2 == 0 else ""
+                for _ in row
+            ],
+            axis=1,
+        )
+        .hide(axis="index")
     )
-    tbl.auto_set_font_size(False)
-    tbl.set_fontsize(11)   # fonte maior
 
-    # Estilo cabeçalho
-    for ci in range(n_cols):
-        cell = tbl[0, ci]
-        cell.set_facecolor(COR_HEADER)
-        cell.set_text_props(color="white", fontweight="bold")
-        cell.set_edgecolor(COR_BORDER)
-        cell.set_height(ROW_H / fig_h)
+    dfi.export(estilo, caminho, dpi=300, table_conversion="matplotlib", max_rows=-1)
 
-    # Estilo linhas de dados
-    for ri in range(1, n_rows + 1):
-        bg = COR_STRIPE if ri % 2 == 1 else COR_BRANCO
-        for ci in range(n_cols):
-            cell = tbl[ri, ci]
-            cell.set_facecolor(bg)
-            cell.set_edgecolor(COR_BORDER)
-            cell.set_text_props(color="#333333")
-            cell.set_height(ROW_H / fig_h)
+    # Redimensionar se necessário
+    with Image.open(caminho) as img:
+        max_w = 640
+        if img.width > max_w:
+            scale    = max_w / img.width
+            new_size = (max_w, int(img.height * scale))
+            img      = img.resize(new_size, Image.LANCZOS)
+            img.save(caminho, format="PNG", optimize=True)
 
-    
-
-    plt.tight_layout()
-    plt.savefig(
-        caminho, dpi=160,
-        bbox_inches="tight",
-        facecolor=COR_BRANCO,   # ← garante branco no PNG final
-        format="PNG",
-    )
-    plt.close(fig)
     print(f"[LOG]   Imagem salva: {caminho}")
 
 
@@ -959,84 +699,67 @@ def gerar_todas_imagens(
 # ===========================================================================
 
 def montar_email_html(
-    assunto, saudacao, texto_corpo, data_atual, data_coleta,
+    assunto, saudacao, texto_corpo, data_atual,
     assinatura_nome, assinatura_cargo, assinatura_email_sig, assinatura_tel,
-    imagens, graficos, caminho_anexo, tem_graficos=False,
+    imagens, caminho_anexo,
 ):
-    blocos_intercalados = ""
-    
-    for idx in range(max(len(graficos), len(imagens))):
-        if idx < len(graficos):
-            titulo_g, _ = graficos[idx]
-            blocos_intercalados += f"""
-            <div style=\"margin-bottom:24px;text-align:left;\">
-                <p style=\"margin:0 0 6px;font-size:13px;font-weight:700;
-                        color:#1e5f3b;\">{titulo_g}</p>
-                <img src=\"cid:grafico_{idx+1}\" alt=\"{titulo_g}\"
-                width=\"750\"
-                style=\"width:750px;height:auto;
-                        border:1px solid #a8d5b5;border-radius:4px;
-                        display:block;\" />
-            </div>"""
-        
-        if idx < len(imagens):
-            titulo_i, _ = imagens[idx]
-            blocos_intercalados += f"""
-            <div style=\"margin-bottom:24px;text-align:left;\">
-                <p style=\"margin:0 0 6px;font-size:13px;font-weight:700;
-                        color:#1e5f3b;\">{titulo_i}</p>
-                <img src=\"cid:tabela_{idx+1}\" alt=\"{titulo_i}\"
-                width=\"700\"
-                style=\"width:700px;height:auto;
-                        border:1px solid #a8d5b5;border-radius:4px;
-                        display:block;\" />
-            </div>"""
+    caminhos   = [c for _, c in imagens]
+    blocos_img = ""
+    for idx, (titulo, _) in enumerate(imagens, start=1):
+        blocos_img += f"""
+          <div style="margin-bottom:16px;">
+            <p style="margin:0 0 4px;font-size:12px;font-weight:700;color:#1e5f3b;">{titulo}</p>
+            <img src="cid:tabela_{idx}" alt="{titulo}"
+                style="max-width:100%;height:auto;border:1px solid #c8e6d4;
+                        border-radius:3px;display:block;" />
+          </div>"""
 
     html = f"""<!DOCTYPE html>
 <html lang="pt-BR">
 <head><meta charset="UTF-8"><title>{assunto}</title></head>
-<body style="margin:0;padding:0;background-color:#f0f7f3;font-family:Calibri,Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0f7f3;padding:30px 0;">
+<body style="margin:0;padding:0;background-color:#f4f4f4;font-family:Calibri,Arial,sans-serif;">
+
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f4;padding:24px 0;">
     <tr><td align="center">
-      <table width="860" cellpadding="0" cellspacing="0"
-             style="background-color:#ffffff;border-radius:8px;
-                    box-shadow:0 2px 8px rgba(0,0,0,0.10);overflow:hidden;">
+      <table width="680" cellpadding="0" cellspacing="0"
+             style="background-color:#ffffff;border-radius:6px;
+                    border:1px solid #dde8e2;overflow:hidden;">
+
+        <!-- CABEÇALHO -->
         <tr>
-          <td style="background-color:#1e5f3b;padding:22px 32px;">
+          <td style="background-color:#1e5f3b;padding:14px 24px;">
             <table width="100%" cellpadding="0" cellspacing="0"><tr>
               <td>
-                <span style="font-size:20px;font-weight:700;color:#ffffff;">Eldorado Brasil</span><br>
-                <span style="font-size:13px;color:#a8d5b5;">Relatório de Produção - Logística Florestal</span>
+                <span style="font-size:15px;font-weight:700;color:#ffffff;">Eldorado Brasil</span>
+                <span style="font-size:11px;color:#a8d5b5;margin-left:8px;">· Estoque Diário de Madeira/TPC</span>
               </td>
-              <td align="right"><span style="font-size:12px;color:#a8d5b5;">{data_atual}</span></td>
+              <td align="right">
+                <span style="font-size:11px;color:#a8d5b5;">{data_atual}</span>
+              </td>
             </tr></table>
           </td>
         </tr>
-        
+
+        <!-- CORPO -->
         <tr>
-          <td style="padding:28px 32px 18px;">
-            <p style="margin:0 0 14px;font-size:15px;color:#333333;">{saudacao}</p>
-            <p style="margin:0 0 22px;font-size:14px;color:#555555;line-height:1.65;">{texto_corpo}</p>
-            <p style="margin:0 0 4px;font-size:12px;font-weight:700;color:#1e5f3b;text-transform:uppercase;">
-              Indicadores Operacionais
-            </p>
+          <td style="padding:20px 24px 12px;">
+            <p style="margin:0 0 6px;font-size:14px;color:#333333;">{saudacao}</p>
+            <p style="margin:0 0 16px;font-size:13px;color:#555555;line-height:1.6;">{texto_corpo}</p>
           </td>
         </tr>
-        <tr>
-        <td style="padding:0;">
-            <hr style="border:none;border-top:1px solid #c8e6d4;margin:0;">
-        </td>
-        </tr>
-        {f'<tr><td style="padding:0 32px 12px;"><p style="margin:0;font-size:11px;color:#888888;font-style:italic;">Dados coletados em: {data_coleta}</p></td></tr>' if data_coleta else ''}
-            <tr><td style="padding:0 32px 18px;">{blocos_intercalados}</td></tr>
 
+        <!-- TABELAS -->
         <tr>
-            <td style="padding:0;">
-                <hr style="border:none;border-top:1px solid #c8e6d4;margin:0;">
-            </td>
+          <td style="padding:0 24px 16px;">{blocos_img}</td>
         </tr>
 
-        
+        <!-- DIVISÓRIA -->
+        <tr>
+          <td style="padding:0 24px;">
+            <hr style="border:none;border-top:1px solid #d4e8db;margin:0;">
+          </td>
+        </tr>
+
         <!-- ASSINATURA -->
         <tr>
         <td style="padding:14px 24px 20px;">
@@ -1104,7 +827,7 @@ def montar_email_html(
                 <div style="height:6px;"></div>
 
                 <div style="font-size:12px;color:#555555;line-height:18px;">
-                    {assinatura_tel}
+                    +55 (17) 9 9767-4167
                 </div>
 
                 </td>
@@ -1115,41 +838,30 @@ def montar_email_html(
         </td>
         </tr>
 
+
         <!-- RODAPÉ -->
-        
         <tr>
-        <td style="background-color:#f0f7f3;padding:10px 24px;border-top:1px solid #dde8e2;text-align:center;">
+          <td style="background-color:#f0f7f3;padding:10px 24px;border-top:1px solid #dde8e2;text-align:center;">
             <span style="font-size:10px;color:#7a9e82;">
-            E-mail gerado automaticamente. Por favor, não responda diretamente.
+              E-mail gerado automaticamente. Por favor, não responda diretamente.
             </span>
-        </td>
+          </td>
         </tr>
-            
+
       </table>
     </td></tr>
   </table>
+
 </body></html>"""
 
-    return html, [], []
+    return html, caminhos, []
 
 
 # ===========================================================================
 # ENVIO OUTLOOK
 # ===========================================================================
 
-def _converter_imagem_base64(caminho: str) -> str:
-    """Converte imagem para base64 para embedding direto no HTML."""
-    try:
-        with open(caminho, "rb") as f:
-            import base64
-            data = base64.b64encode(f.read()).decode("utf-8")
-            return f"data:image/png;base64,{data}"
-    except Exception as exc:
-        print(f"[AVISO] Falha ao converter imagem para base64: {exc}")
-        return ""
-
-
-def enviar_email(html_body, assunto, email_remetente, destinatarios, imagem_paths, num_tabela_images, anexos):
+def enviar_email(html_body, assunto, email_remetente, destinatarios, imagem_paths, anexos):
     try:
         import win32com.client
     except ImportError as exc:
@@ -1169,6 +881,19 @@ def enviar_email(html_body, assunto, email_remetente, destinatarios, imagem_path
             mail.SentOnBehalfOfName = email_remetente
         except Exception:
             print("[AVISO] Não foi possível configurar SentOnBehalfOfName.")
+
+    for idx, caminho in enumerate(imagem_paths, start=1):
+        if os.path.exists(caminho):
+            att = mail.Attachments.Add(os.path.abspath(caminho))
+            try:
+                att.PropertyAccessor.SetProperty(
+                    "http://schemas.microsoft.com/mapi/proptag/0x3712001F",
+                    f"tabela_{idx}",
+                )
+            except Exception:
+                print(f"[AVISO] Não foi possível definir CID para: {caminho}")
+        else:
+            print(f"[AVISO] Imagem não encontrada: {caminho}")
 
     for caminho in anexos:
         if os.path.exists(caminho):
@@ -1205,7 +930,9 @@ def executar() -> None:
     print(f"  Início: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
     print("=" * 60)
 
-    data_atual    = datetime.now().strftime("%d/%m/%Y")
+    data_atual = datetime.now().strftime("%d/%m/%Y")
+    data_curta = datetime.now().strftime("%d/%m")
+    assunto    = f"Estoque Diário de Madeira/TPC — {data_curta}"
     imagem_paths: list[str] = []
 
     try:
@@ -1222,17 +949,9 @@ def executar() -> None:
         for d in DESTINATARIOS:
             print(f"       → {d}")
 
-        temp_paths: list[str] = []
-        chart_items: list[tuple[str, str]] = []
-
         if EXCEL_PATH:
             if not _refresh_excel(EXCEL_PATH):
                 print("[AVISO] Não foi possível atualizar a planilha antes da leitura.")
-
-        if ANEXAR_GRAFICOS:
-            for cfg in SHEET_CONFIG:
-                if cfg.get("ativo", True):
-                    chart_items.extend(_exportar_graficos(EXCEL_PATH, cfg["sheet"], base_name=IMAGE_BASE))
 
         tabelas = carregar_e_segmentar(EXCEL_PATH, SHEET_CONFIG)
         if not tabelas:
@@ -1240,40 +959,28 @@ def executar() -> None:
 
         imagens      = gerar_todas_imagens(tabelas, IMAGE_BASE)
         imagem_paths = [c for _, c in imagens]
-        chart_paths  = [c for _, c in chart_items]
-        temp_paths   = imagem_paths + chart_paths
-        
-        data_coleta = _extrair_data_coleta(EXCEL_PATH, "Tabela - Produção Diária")
 
         html_body, imagem_paths, anexos = montar_email_html(
-            assunto              = ASSUNTO,
+            assunto              = assunto,
             saudacao             = SAUDACAO,
             texto_corpo          = TEXTO_CORPO,
             data_atual           = data_atual,
-            data_coleta          = data_coleta,
             assinatura_nome      = ASSINATURA_NOME,
             assinatura_cargo     = ASSINATURA_CARGO,
             assinatura_email_sig = ASSINATURA_EMAIL,
             assinatura_tel       = ASSINATURA_TEL,
             imagens              = imagens,
-            graficos             = chart_items,
             caminho_anexo        = EXCEL_PATH if ANEXAR_PLANILHA else "",
-            tem_graficos         = bool(chart_items),
         )
         print("[LOG] E-mail montado com sucesso.")
 
-        anexos = []
-        if ANEXAR_PLANILHA:
-            anexos.append(EXCEL_PATH)
-
         enviar_email(
-            html_body          = html_body,
-            assunto            = ASSUNTO,
-            email_remetente    = EMAIL_REMETENTE,
-            destinatarios      = DESTINATARIOS,
-            imagem_paths       = imagem_paths + chart_paths,
-            num_tabela_images  = len(imagens),
-            anexos             = anexos,
+            html_body       = html_body,
+            assunto         = assunto,
+            email_remetente = EMAIL_REMETENTE,
+            destinatarios   = DESTINATARIOS,
+            imagem_paths    = imagem_paths,
+            anexos          = anexos,
         )
 
     except FileNotFoundError as exc:
@@ -1286,10 +993,16 @@ def executar() -> None:
         print(f"\n[ERRO INESPERADO] {exc}")
         traceback.print_exc()
     finally:
-        limpar_temporarios(temp_paths if 'temp_paths' in locals() else imagem_paths)
+        limpar_temporarios(imagem_paths)
         print(f"\n[LOG] Duração total: {time.time() - inicio:.1f}s")
         print("=" * 60)
-
+EXTRATORES = {
+    "extrator_meta_diaria_bi":      extrator_meta_diaria_bi,
+    "extrator_volume_real_diario":  extrator_volume_real_diario,
+    "extrator_forecast_volume":     extrator_forecast_volume,
+    "extrator_micro_logistica":     extrator_micro_logistica,
+    "extrator_resumo_estoque":      extrator_resumo_estoque,
+}
 
 if __name__ == "__main__":
     executar()

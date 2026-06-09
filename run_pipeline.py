@@ -1,23 +1,32 @@
-
 """
 =============================================================================
-ORQUESTRADOR DO PIPELINE OPERACIONAL  v3.2.0
+ORQUESTRADOR DO PIPELINE OPERACIONAL  v3.4.0
 =============================================================================
-v3.2.0 — Correção crítica:
-  - PYTHON_SGF e PYTHON_EMAIL agora são configuráveis via .env de forma
-    independente. Isso resolve o ModuleNotFoundError quando o orquestrador
-    é iniciado de dentro de um .venv diferente do script de extração SGF.
-  - Fallback: se PYTHON_SGF não estiver definido, usa sys.executable
-    (comportamento anterior, mantido para compatibilidade).
+v3.4.0 — Melhorias:
+  - Refresh do Excel movido para APÓS a extração SGF (Etapa 2).
+  - Flags de linha de comando para pular etapas individualmente:
+      --skip-rede      Pula verificação de acessibilidade do arquivo de rede
+      --skip-sgf       Pula a extração SGF
+      --skip-refresh   Pula o refresh do Excel
+      --skip-email     Pula o envio de e-mail
+    Exemplo:
+      python pipeline_orquestrador.py --skip-sgf
+      python pipeline_orquestrador.py --skip-sgf --skip-refresh
 
-Variáveis de ambiente adicionadas:
-  PYTHON_SGF   — Python do .venv do projeto SGF   (com selenium instalado)
-  PYTHON_EMAIL — Python do .venv do projeto e-mail (com as libs de e-mail)
+v3.3.0 — Refresh automático do Report Operacional via Excel COM (xlwings).
+v3.2.0 — PYTHON_SGF e PYTHON_EMAIL configuráveis via .env de forma independente.
+
+Variáveis de ambiente:
+  PYTHON_SGF            — Python do .venv do projeto SGF (com selenium)
+  PYTHON_EMAIL          — Python do .venv do projeto de e-mail
+  EXCEL_PATH            — Caminho completo para o Report Operacional V2.xlsx
+  EXCEL_REFRESH_TIMEOUT — Tempo máx. de espera pelo refresh em segundos (padrão 300)
 =============================================================================
 """
 
 import os
 import sys
+import argparse
 import subprocess
 import re
 import time
@@ -57,12 +66,43 @@ LOG_SGF      = Path(os.getenv("LOG_SGF",      str(BASE_DIR / "log_sgf.txt")))
 PIPELINE_LOG = Path(os.getenv("PIPELINE_LOG", str(BASE_DIR / "pipeline.log")))
 EXCEL_PATH   = Path(os.getenv("EXCEL_PATH", "")).expanduser() if os.getenv("EXCEL_PATH") else None
 
+EXCEL_REFRESH_TIMEOUT = int(os.getenv("EXCEL_REFRESH_TIMEOUT", "300"))
+
 # ── Executáveis Python por script ────────────────────────────
-# PYTHON_SGF   → .venv do projeto SGF (precisa do selenium)
-# PYTHON_EMAIL → .venv do projeto de e-mail
-# Fallback para sys.executable caso não estejam definidos.
 PYTHON_SGF   = os.getenv("PYTHON_SGF",   sys.executable)
 PYTHON_EMAIL = os.getenv("PYTHON_EMAIL", sys.executable)
+
+
+# ══════════════════════════════════════════════════════════════
+# ARGUMENTOS DE LINHA DE COMANDO
+# ══════════════════════════════════════════════════════════════
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Orquestrador do Pipeline Operacional",
+        formatter_class=argparse.RawTextHelpFormatter,
+    )
+    parser.add_argument(
+        "--skip-rede",
+        action="store_true",
+        help="Pula a verificação de acessibilidade do arquivo de rede",
+    )
+    parser.add_argument(
+        "--skip-sgf",
+        action="store_true",
+        help="Pula a extração SGF (Etapa 1)",
+    )
+    parser.add_argument(
+        "--skip-refresh",
+        action="store_true",
+        help="Pula o refresh do Report Operacional no Excel (Etapa 2)",
+    )
+    parser.add_argument(
+        "--skip-email",
+        action="store_true",
+        help="Pula o envio de e-mail (Etapa 3)",
+    )
+    return parser.parse_args()
 
 
 # ══════════════════════════════════════════════════════════════
@@ -80,14 +120,26 @@ def log_info(m):  _log("INFO",  m)
 def log_ok(m):    _log("OK",    m)
 def log_warn(m):  _log("WARN",  m)
 def log_erro(m):  _log("ERRO",  m)
+def log_skip(m):  _log("SKIP",  m)
 
-def _cabecalho() -> None:
+def _cabecalho(args: argparse.Namespace) -> None:
+    puladas = [
+        etapa for flag, etapa in [
+            (args.skip_rede,    "rede"),
+            (args.skip_sgf,     "sgf"),
+            (args.skip_refresh, "refresh"),
+            (args.skip_email,   "email"),
+        ] if flag
+    ]
+    info_puladas = f"  Etapas puladas : {', '.join(puladas)}\n" if puladas else ""
+
     linha = "═" * 60
     bloco = (
         f"\n{linha}\n"
         f"  PIPELINE — {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}\n"
         f"  Python SGF   — {PYTHON_SGF}\n"
         f"  Python Email — {PYTHON_EMAIL}\n"
+        f"{info_puladas}"
         f"{linha}\n"
     )
     with open(PIPELINE_LOG, "a", encoding="utf-8") as f:
@@ -164,6 +216,140 @@ def _analisar_log_sgf() -> dict:
     resultado["linhas_erro"] = erros[:10]
 
     return resultado
+
+
+# ══════════════════════════════════════════════════════════════
+# REFRESH DO EXCEL VIA COM (Power Query / xlwings)
+# ══════════════════════════════════════════════════════════════
+
+def _refresh_excel(caminho: Path, timeout_s: int = 300) -> bool:
+    app = None
+    wb = None
+    excel_pid = None
+    if caminho is None:
+        log_warn("EXCEL_PATH não configurado — refresh ignorado.")
+        return True
+
+    if not caminho.exists():
+        log_erro(f"Arquivo Excel não encontrado para refresh: {caminho}")
+        return False
+
+    try:
+        import xlwings as xw
+    except ImportError:
+        log_erro(
+            "Biblioteca 'xlwings' não encontrada.\n"
+            "         Instale com: pip install xlwings\n"
+            "         Refresh do Excel ignorado."
+        )
+        return False
+
+    # ── NOVO: aguarda o arquivo ser liberado ──────────────────────────────────
+    LOCK_TIMEOUT   = int(os.getenv("LOCK_TIMEOUT",   "600"))  # máx 10 min esperando
+    LOCK_INTERVALO = int(os.getenv("LOCK_INTERVALO", "30"))   # testa a cada 30s
+
+    aguardado_lock = 0
+    while True:
+        try:
+            # Tenta abrir em modo exclusivo — falha se outro processo tiver o arquivo
+            with open(caminho, "r+b"):
+                pass
+            log_ok("Arquivo disponível (sem bloqueio detectado).")
+            break
+        except (PermissionError, OSError):
+            if aguardado_lock >= LOCK_TIMEOUT:
+                log_erro(
+                    f"Arquivo permanece bloqueado após {LOCK_TIMEOUT}s. "
+                    "Refresh abortado."
+                )
+                return False
+            log_warn(
+                f"Arquivo em uso por outro processo. "
+                f"Aguardando {LOCK_INTERVALO}s... "
+                f"({aguardado_lock}/{LOCK_TIMEOUT}s)"
+            )
+            time.sleep(LOCK_INTERVALO)
+            aguardado_lock += LOCK_INTERVALO
+    # ─────────────────────────────────────────────────────────────────────────
+
+    log_info(f"Abrindo Excel em background para refresh: {caminho.name}")
+    app = None
+    try:
+        app = xw.App(visible=False, add_book=False)
+        app.display_alerts  = False
+        app.screen_updating = False
+        excel_pid = app.pid
+        log_info(f"Excel iniciado (PID={excel_pid})")
+        wb = app.books.open(str(caminho))
+        log_info("Disparando RefreshAll (Power Query)...")
+        wb.api.RefreshAll()
+
+        intervalo = 5
+        aguardado = 0
+        while aguardado < timeout_s:
+            time.sleep(intervalo)
+            aguardado += intervalo
+
+            ainda_atualizando = False
+            for sheet in wb.sheets:
+                for qt in sheet.api.QueryTables:
+                    if qt.Refreshing:
+                        ainda_atualizando = True
+                        break
+                if ainda_atualizando:
+                    break
+                for lo in sheet.api.ListObjects:
+                    try:
+                        if lo.QueryTable.Refreshing:
+                            ainda_atualizando = True
+                            break
+                    except Exception:
+                        pass
+                if ainda_atualizando:
+                    break
+
+            if not ainda_atualizando:
+                log_ok(f"Refresh concluído em ~{aguardado}s.")
+                break
+        else:
+            log_warn(
+                f"Timeout de {timeout_s}s atingido aguardando o refresh. "
+                "A planilha pode estar parcialmente atualizada."
+            )
+
+        wb.save()
+        wb.close()
+        log_ok(f"Arquivo salvo e fechado: {caminho.name}")
+        return True
+
+    except Exception as exc:
+        log_erro(f"Falha no refresh do Excel: {exc}")
+        return False
+
+    finally:
+        try:
+            if wb is not None:
+                wb.close()
+        except Exception:
+            pass
+
+        try:
+            if app is not None:
+                app.quit()
+        except Exception:
+            pass
+
+        # garante encerramento do Excel criado pelo xlwings
+        try:
+            if excel_pid:
+                subprocess.run(
+                    ["taskkill", "/PID", str(excel_pid), "/F", "/T"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                log_info(f"Excel encerrado à força (PID={excel_pid})")
+        except Exception:
+            pass
 
 
 # ══════════════════════════════════════════════════════════════
@@ -273,52 +459,87 @@ def _executar_script(script: Path, nome: str, python_exe: str) -> int:
 # ══════════════════════════════════════════════════════════════
 
 def main() -> None:
-    _cabecalho()
-    codigo_email = -1
+    args = _parse_args()
+    _cabecalho(args)
 
-    # ── ETAPA 0: Verificar acessibilidade do arquivo de rede ─
+    codigo_sgf   = 0   # 0 = OK por padrão quando pulado
+    codigo_email = 0
+    rede_ok      = True
+    refresh_ok   = True
+
+    # ── ETAPA 0: Verificar acessibilidade do arquivo de rede ──
     log_info("━" * 40)
     log_info("ETAPA 0 — Verificação do arquivo de rede")
     log_info("━" * 40)
 
-    rede_ok = _aguardar_arquivo_rede(EXCEL_PATH, tentativas=3, intervalo_s=60)
-    if not rede_ok:
-        log_erro(
-            "Arquivo de rede inacessível após todas as tentativas. "
-            "O e-mail será enviado sem as imagens atualizadas."
-        )
+    if args.skip_rede:
+        log_skip("Verificação de rede PULADA (--skip-rede).")
+    else:
+        rede_ok = _aguardar_arquivo_rede(EXCEL_PATH, tentativas=3, intervalo_s=60)
+        if not rede_ok:
+            log_erro(
+                "Arquivo de rede inacessível após todas as tentativas. "
+                "O pipeline continuará sem atualizar a planilha."
+            )
 
     # ── ETAPA 1: Extração SGF ─────────────────────────────────
     log_info("━" * 40)
     log_info("ETAPA 1 — Extração SGF")
     log_info("━" * 40)
 
-    codigo_sgf = _executar_script(SGF_SCRIPT, "Extração SGF", PYTHON_SGF)
-
-    # ── ETAPA 2: Análise do log de extração ──────────────────
-    log_info("Analisando resultado da extração...")
-    analise = _analisar_log_sgf()
-
-    if analise["sucesso"]:
-        log_ok(f"Extração OK — IDs processados: {analise['ids_ok']}")
+    if args.skip_sgf:
+        log_skip("Extração SGF PULADA (--skip-sgf).")
     else:
-        log_warn(
-            f"Extração com falhas — "
-            f"OK: {analise['ids_ok']} | Erro: {analise['ids_erro']}"
-        )
+        codigo_sgf = _executar_script(SGF_SCRIPT, "Extração SGF", PYTHON_SGF)
+
+    # ── ETAPA 2: Refresh do Report Operacional (Power Query) ──
+    log_info("━" * 40)
+    log_info("ETAPA 2 — Refresh do Report Operacional V2.xlsx")
+    log_info("━" * 40)
+
+    if args.skip_refresh:
+        log_skip("Refresh do Excel PULADO (--skip-refresh).")
+    elif not rede_ok or EXCEL_PATH is None:
+        log_warn("Refresh ignorado — arquivo de rede inacessível.")
+        refresh_ok = False
+    else:
+        refresh_ok = _refresh_excel(EXCEL_PATH, timeout_s=EXCEL_REFRESH_TIMEOUT)
+        if not refresh_ok:
+            log_warn(
+                "Refresh do Excel falhou. "
+                "O e-mail usará os dados da última atualização disponível."
+            )
+
+    # ── ETAPA 2.5: Análise do log de extração ─────────────────
+    if not args.skip_sgf:
+        log_info("Analisando resultado da extração...")
+        analise = _analisar_log_sgf()
+        if analise["sucesso"]:
+            log_ok(f"Extração OK — IDs processados: {analise['ids_ok']}")
+        else:
+            log_warn(
+                f"Extração com falhas — "
+                f"OK: {analise['ids_ok']} | Erro: {analise['ids_erro']}"
+            )
+    else:
+        # SGF pulado: considera extração ok para não bloquear o e-mail
+        analise = {"sucesso": True, "ids_ok": [], "ids_erro": [], "linhas_erro": []}
 
     # ── ETAPA 3: Envio de e-mail ──────────────────────────────
     log_info("━" * 40)
-    log_info("ETAPA 2 — Envio de E-mail")
+    log_info("ETAPA 3 — Envio de E-mail")
     log_info("━" * 40)
 
-    injetou = False
-    try:
-        injetou = _injetar_aviso_email(analise)
-        codigo_email = _executar_script(EMAIL_SCRIPT, "Envio de E-mail", PYTHON_EMAIL)
-    finally:
-        if injetou:
-            _reverter_injecao()
+    if args.skip_email:
+        log_skip("Envio de e-mail PULADO (--skip-email).")
+    else:
+        injetou = False
+        try:
+            injetou = _injetar_aviso_email(analise)
+            codigo_email = _executar_script(EMAIL_SCRIPT, "Envio de E-mail", PYTHON_EMAIL)
+        finally:
+            if injetou:
+                _reverter_injecao()
 
     # ── Resumo ────────────────────────────────────────────────
     log_info("━" * 40)
@@ -326,18 +547,42 @@ def main() -> None:
     log_info("━" * 40)
     log_info(f"  Python SGF   : {PYTHON_SGF}")
     log_info(f"  Python Email : {PYTHON_EMAIL}")
-    log_info(f"  Rede OK      : {'✔' if rede_ok else '✘'}")
-    log_info(f"  Extração     : {'✔ OK' if codigo_sgf == 0 else '✘ ERRO'} (código {codigo_sgf})")
-    log_info(f"  E-mail       : {'✔ OK' if codigo_email == 0 else '✘ ERRO'} (código {codigo_email})")
 
-    sucesso_geral = (codigo_sgf == 0 and codigo_email == 0)
-    if sucesso_geral:
+    def _status(pulado, ok, codigo=None):
+        if pulado:
+            return "— PULADO"
+        base = "✔ OK" if ok else "✘ ERRO"
+        return f"{base} (código {codigo})" if codigo is not None else base
+
+    log_info(f"  Rede         : {_status(args.skip_rede,    rede_ok)}")
+    log_info(f"  Extração SGF : {_status(args.skip_sgf,     codigo_sgf == 0, codigo_sgf)}")
+    log_info(f"  Refresh Excel: {_status(args.skip_refresh, refresh_ok)}")
+    log_info(f"  E-mail       : {_status(args.skip_email,   codigo_email == 0, codigo_email)}")
+
+    # Considera sucesso geral apenas nas etapas que foram executadas
+    falhas = []
+    if not args.skip_sgf   and codigo_sgf   != 0: falhas.append("Extração SGF")
+    if not args.skip_email and codigo_email != 0: falhas.append("Envio de E-mail")
+
+    if not falhas:
         log_ok("Pipeline concluído com sucesso.")
+        sys.exit(0)
     else:
-        log_warn("Pipeline concluído com um ou mais erros. Verifique os logs acima.")
-
-    sys.exit(0 if sucesso_geral else 1)
+        log_warn(f"Pipeline concluído com erros em: {', '.join(falhas)}. Verifique os logs.")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+
+    except KeyboardInterrupt:
+        log_warn("Execução interrompida pelo usuário (Ctrl+C).")
+
+        # mata qualquer Excel iniciado pelo pipeline
+        try:
+            os.system("taskkill /F /IM EXCEL.EXE >nul 2>&1")
+        except Exception:
+            pass
+
+        sys.exit(1)
